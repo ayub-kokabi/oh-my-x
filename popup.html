@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Oh My X</title>
+  <link rel="stylesheet" href="lib/slimselect.min.css">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <img src="./icons/icon32.png" id="icon" alt="Oh My X Icon" />
+    <h2>Oh My X</h2>
+
+    <div id="setupNotice" class="setup-notice" style="display: none;">
+      <p>Welcome! Please configure your initial settings:</p>
+    </div>
+
+    <div class="form-group">
+      <label for="language-select">Allowed Languages:</label>
+      <select id="language-select" multiple></select>
+      <small class="form-help-text">
+        Select languages you want to see in your feed
+      </small>
+    </div>
+
+    <div class="form-group checkbox-group">
+      <input type="checkbox" id="hideNoText">
+      <label for="hideNoText">Hide media posts without text</label>
+    </div>
+
+    <div class="form-group">
+      <label for="excludeAccounts">Excluded Accounts:</label>
+      <textarea 
+        id="excludeAccounts" 
+        rows="4" 
+        placeholder="e.g.,&#10;username1&#10;username2&#10;"
+        aria-describedby="excludeHelp"
+      ></textarea>
+      <small id="excludeHelp" class="form-help-text">
+        Posts from these accounts will always be shown, regardless of other rules.
+      </small>
+    </div>
+
+    <button id="saveButton" type="button">Save Settings</button>
+    <div id="status" role="status" aria-live="polite"></div>
+  </div>
+
+  <script src="lib/slimselect.min.js"></script>
+  <script src="languages.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
