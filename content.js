@@ -2,9 +2,11 @@ const XFilter = (() => {
   let settings = {};
   let debounceTimeout = null;
   let observer = null;
+  let lastFilterTime = 0;
   
   const DEBOUNCE_DELAY = 300;
   const RETRY_INTERVAL = 500;
+  const REFILTER_INTERVAL = 1000;
 
   const SELECTORS = {
     TAB: 'a[role="tab"]',
@@ -13,6 +15,11 @@ const XFilter = (() => {
     USER_NAME: '[data-testid="User-Name"] a',
     TWEET_TEXT: '[data-testid="tweetText"]',
     TIMELINE: 'div[aria-label="Home timeline"]'
+  };
+
+  const isOnHomePage = () => {
+    const path = window.location.pathname;
+    return path === '/home' || path === '/' || path.startsWith('/home/');
   };
 
   const isForYouTabActive = () => {
@@ -26,8 +33,6 @@ const XFilter = (() => {
     }
     return false;
   };
-
-  const isOnHomePage = () => window.location.pathname === '/home';
 
   const extractAuthorHandle = (authorElement) => {
     if (!authorElement?.href) return '';
@@ -67,35 +72,48 @@ const XFilter = (() => {
   const applyVisibility = (element, isVisible) => {
     if (!element) return;
     
-    // Use requestAnimationFrame for smoother updates
+    element.dataset.xfiltered = isVisible ? 'false' : 'true';
+    
     requestAnimationFrame(() => {
       element.style.display = isVisible ? '' : 'none';
     });
   };
 
-  const filterFeed = () => {
+  const filterFeed = (force = false) => {
     if (!isOnHomePage() || !isForYouTabActive()) {
       return;
     }
 
+    const now = Date.now();
+    // Prevent filtering too frequently
+    if (!force && now - lastFilterTime < 100) {
+      return;
+    }
+    lastFilterTime = now;
+
     const posts = document.querySelectorAll(SELECTORS.CELL);
     
     posts.forEach(post => {
+      const wasFiltered = post.dataset.xfiltered === 'true';
       const { shouldFilter, isValidPost } = shouldFilterPost(post);
       
       if (isValidPost) {
-        applyVisibility(post, !shouldFilter);
+        // Only apply if state changed
+        if (shouldFilter !== wasFiltered) {
+          applyVisibility(post, !shouldFilter);
+        }
       }
     });
   };
 
   const debouncedFilter = () => {
     clearTimeout(debounceTimeout);
-    debounceTimeout = setTimeout(filterFeed, DEBOUNCE_DELAY);
+    debounceTimeout = setTimeout(() => filterFeed(false), DEBOUNCE_DELAY);
   };
 
   const resetAllPosts = () => {
     document.querySelectorAll(SELECTORS.CELL).forEach(post => {
+      delete post.dataset.xfiltered;
       applyVisibility(post, true);
     });
   };
@@ -105,7 +123,22 @@ const XFilter = (() => {
       observer.disconnect();
     }
 
-    observer = new MutationObserver(debouncedFilter);
+    observer = new MutationObserver((mutations) => {
+      let shouldFilter = false;
+      
+      for (const mutation of mutations) {
+        if (mutation.addedNodes.length > 0 || 
+            mutation.removedNodes.length > 0) {
+          shouldFilter = true;
+          break;
+        }
+      }
+      
+      if (shouldFilter) {
+        debouncedFilter();
+      }
+    });
+    
     return observer;
   };
 
@@ -116,10 +149,52 @@ const XFilter = (() => {
       const obs = createObserver();
       obs.observe(timeline, { 
         childList: true, 
-        subtree: true 
+        subtree: true,
+        attributes: false
       });
+      
+      filterFeed(true);
     } else {
       setTimeout(observeTimeline, RETRY_INTERVAL);
+    }
+  };
+
+  const startPeriodicCheck = () => {
+    setInterval(() => {
+      if (isOnHomePage() && isForYouTabActive()) {
+        filterFeed(false);
+      }
+    }, REFILTER_INTERVAL);
+  };
+
+  const handleUrlChange = () => {
+    if (isOnHomePage()) {
+      setTimeout(() => {
+        observeTimeline();
+        filterFeed(true);
+      }, 500);
+    } else {
+      if (observer) {
+        observer.disconnect();
+      }
+    }
+  };
+
+  const setupNavigationListeners = () => {
+    // Detect URL changes in SPA
+    let lastUrl = location.href;
+    new MutationObserver(() => {
+      const url = location.href;
+      if (url !== lastUrl) {
+        lastUrl = url;
+        handleUrlChange();
+      }
+    }).observe(document, { subtree: true, childList: true });
+
+    window.addEventListener('popstate', handleUrlChange);
+    
+    if (window.navigation) {
+      window.navigation.addEventListener('navigate', handleUrlChange);
     }
   };
 
@@ -127,18 +202,16 @@ const XFilter = (() => {
     if (changes.settings) {
       settings = changes.settings.newValue || {};
       resetAllPosts();
-      filterFeed();
+      filterFeed(true);
     }
   };
 
   const loadSettings = async () => {
     try {
       const data = await chrome.storage.sync.get('settings');
-      // Use empty object as default if no settings exist
       settings = data.settings || {};
       return settings;
     } catch (error) {
-      console.error('Error loading settings:', error);
       settings = {};
       return settings;
     }
@@ -147,11 +220,14 @@ const XFilter = (() => {
   const initialize = async () => {
     try {
       await loadSettings();
-      filterFeed();
+      
       chrome.storage.onChanged.addListener(handleStorageChange);
+      setupNavigationListeners();
       observeTimeline();
+      startPeriodicCheck();
+      
     } catch (error) {
-      console.error('Extension initialization error:', error);
+      // Silent fail
     }
   };
 

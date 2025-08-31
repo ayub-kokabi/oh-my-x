@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Oh My X",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Filter your X (twitter) feed by language",
   "permissions": [
     "storage"
